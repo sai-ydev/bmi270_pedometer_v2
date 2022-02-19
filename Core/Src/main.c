@@ -18,11 +18,14 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "stdio.h"
 #include "bmi270.h"
 #include "string.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "ssd1306.h"
+#include "ssd1306_tests.h"
+#include <stdbool.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -32,7 +35,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define BUS_TIMEOUT 1000
+#define BUS_TIMEOUT             1000
+#define READ_WRITE_LEN     UINT8_C(32)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -57,8 +61,10 @@ static void MX_GPIO_Init(void);
 static void MX_DFSDM1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_I2C1_Init(void);
-int8_t SensorAPI_I2Cx_Read(uint8_t reg_addr, uint8_t *reg_data, uint32_t len, void *intf_ptr);
-int8_t SensorAPI_I2Cx_Write(uint8_t reg_addr, const uint8_t *reg_data, uint32_t len, void *intf_ptr);
+int8_t SensorAPI_I2Cx_Read(uint8_t reg_addr, uint8_t *reg_data, uint32_t len,
+		void *intf_ptr);
+int8_t SensorAPI_I2Cx_Write(uint8_t reg_addr, const uint8_t *reg_data,
+		uint32_t len, void *intf_ptr);
 void bmi2_delay_us(uint32_t period, void *intf_ptr);
 /* USER CODE BEGIN PFP */
 
@@ -66,6 +72,254 @@ void bmi2_delay_us(uint32_t period, void *intf_ptr);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+int __io_putchar(int ch) {
+	HAL_UART_Transmit(&huart1, (uint8_t*) &ch, 1, 0xFFFF);
+	return ch;
+}
+
+void bmi2_error_codes_print_result(int8_t rslt) {
+	switch (rslt) {
+	case BMI2_OK:
+
+		/* Do nothing */
+		break;
+
+	case BMI2_W_FIFO_EMPTY:
+		printf("Warning [%d] : FIFO empty\r\n", rslt);
+		break;
+	case BMI2_W_PARTIAL_READ:
+		printf("Warning [%d] : FIFO partial read\r\n", rslt);
+		break;
+	case BMI2_E_NULL_PTR:
+		printf(
+				"Error [%d] : Null pointer error. It occurs when the user tries to assign value (not address) to a pointer," " which has been initialized to NULL.\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_COM_FAIL:
+		printf(
+				"Error [%d] : Communication failure error. It occurs due to read/write operation failure and also due " "to power failure during communication\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_DEV_NOT_FOUND:
+		printf(
+				"Error [%d] : Device not found error. It occurs when the device chip id is incorrectly read\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_INVALID_SENSOR:
+		printf(
+				"Error [%d] : Invalid sensor error. It occurs when there is a mismatch in the requested feature with the " "available one\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_SELF_TEST_FAIL:
+		printf(
+				"Error [%d] : Self-test failed error. It occurs when the validation of accel self-test data is " "not satisfied\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_INVALID_INT_PIN:
+		printf(
+				"Error [%d] : Invalid interrupt pin error. It occurs when the user tries to configure interrupt pins " "apart from INT1 and INT2\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_OUT_OF_RANGE:
+		printf(
+				"Error [%d] : Out of range error. It occurs when the data exceeds from filtered or unfiltered data from " "fifo and also when the range exceeds the maximum range for accel and gyro while performing FOC\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_ACC_INVALID_CFG:
+		printf(
+				"Error [%d] : Invalid Accel configuration error. It occurs when there is an error in accel configuration" " register which could be one among range, BW or filter performance in reg address 0x40\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_GYRO_INVALID_CFG:
+		printf(
+				"Error [%d] : Invalid Gyro configuration error. It occurs when there is a error in gyro configuration" "register which could be one among range, BW or filter performance in reg address 0x42\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_ACC_GYR_INVALID_CFG:
+		printf(
+				"Error [%d] : Invalid Accel-Gyro configuration error. It occurs when there is a error in accel and gyro" " configuration registers which could be one among range, BW or filter performance in reg address 0x40 " "and 0x42\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_CONFIG_LOAD:
+		printf(
+				"Error [%d] : Configuration load error. It occurs when failure observed while loading the configuration " "into the sensor\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_INVALID_PAGE:
+		printf(
+				"Error [%d] : Invalid page error. It occurs due to failure in writing the correct feature configuration " "from selected page\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_SET_APS_FAIL:
+		printf(
+				"Error [%d] : APS failure error. It occurs due to failure in write of advance power mode configuration " "register\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_AUX_INVALID_CFG:
+		printf(
+				"Error [%d] : Invalid AUX configuration error. It occurs when the auxiliary interface settings are not " "enabled properly\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_AUX_BUSY:
+		printf(
+				"Error [%d] : AUX busy error. It occurs when the auxiliary interface buses are engaged while configuring" " the AUX\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_REMAP_ERROR:
+		printf(
+				"Error [%d] : Remap error. It occurs due to failure in assigning the remap axes data for all the axes " "after change in axis position\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_GYR_USER_GAIN_UPD_FAIL:
+		printf(
+				"Error [%d] : Gyro user gain update fail error. It occurs when the reading of user gain update status " "fails\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_SELF_TEST_NOT_DONE:
+		printf(
+				"Error [%d] : Self-test not done error. It occurs when the self-test process is ongoing or not " "completed\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_INVALID_INPUT:
+		printf(
+				"Error [%d] : Invalid input error. It occurs when the sensor input validity fails\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_INVALID_STATUS:
+		printf(
+				"Error [%d] : Invalid status error. It occurs when the feature/sensor validity fails\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_CRT_ERROR:
+		printf(
+				"Error [%d] : CRT error. It occurs when the CRT test has failed\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_ST_ALREADY_RUNNING:
+		printf(
+				"Error [%d] : Self-test already running error. It occurs when the self-test is already running and " "another has been initiated\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_CRT_READY_FOR_DL_FAIL_ABORT:
+		printf(
+				"Error [%d] : CRT ready for download fail abort error. It occurs when download in CRT fails due to wrong " "address location\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_DL_ERROR:
+		printf(
+				"Error [%d] : Download error. It occurs when write length exceeds that of the maximum burst length\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_PRECON_ERROR:
+		printf(
+				"Error [%d] : Pre-conditional error. It occurs when precondition to start the feature was not " "completed\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_ABORT_ERROR:
+		printf(
+				"Error [%d] : Abort error. It occurs when the device was shaken during CRT test\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_WRITE_CYCLE_ONGOING:
+		printf(
+				"Error [%d] : Write cycle ongoing error. It occurs when the write cycle is already running and another " "has been initiated\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_ST_NOT_RUNING:
+		printf(
+				"Error [%d] : Self-test is not running error. It occurs when self-test running is disabled while it's " "running\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_DATA_RDY_INT_FAILED:
+		printf(
+				"Error [%d] : Data ready interrupt error. It occurs when the sample count exceeds the FOC sample limit " "and data ready status is not updated\r\n",
+				rslt);
+		break;
+
+	case BMI2_E_INVALID_FOC_POSITION:
+		printf(
+				"Error [%d] : Invalid FOC position error. It occurs when average FOC data is obtained for the wrong" " axes\r\n",
+				rslt);
+		break;
+
+	default:
+		printf("Error [%d] : Unknown error code\r\n", rslt);
+		break;
+	}
+}
+
+int8_t bmi2_step_counter_set_config(struct bmi2_dev *bmi2_dev) {
+	/* Variable to define result */
+	int8_t rslt;
+
+	/* Initialize interrupts for gyroscope */
+	struct bmi2_sens_int_config sens_int = { .type = BMI2_STEP_COUNTER,
+			.hw_int_pin = BMI2_INT2 };
+
+	/* List the sensors which are required to enable */
+	uint8_t sens_list[2] = { BMI2_ACCEL, BMI2_STEP_COUNTER };
+
+	/* Structure to define the type of the sensor and its configurations */
+	struct bmi2_sens_config config;
+
+	/* Configure type of feature */
+	config.type = BMI2_STEP_COUNTER;
+
+	/* Enable the selected sensors */
+	rslt = bmi270_sensor_enable(sens_list, 2, bmi2_dev);
+
+	if (rslt == BMI2_OK) {
+		/* Get default configurations for the type of feature selected */
+		rslt = bmi270_get_sensor_config(&config, 1, bmi2_dev);
+
+		if (rslt == BMI2_OK) {
+			config.cfg.step_counter.watermark_level = 1;
+
+			rslt = bmi270_set_sensor_config(&config, 1, bmi2_dev);
+			if (rslt == BMI2_OK) {
+				/* Map interrupt to pins */
+				rslt = bmi270_map_feat_int(&sens_int, 1, bmi2_dev);
+			} else {
+				printf("Set Sensor Config failed");
+			}
+
+		} else {
+			printf("Get sensor config failed");
+		}
+	} else {
+		printf("Sensor Enable Failed");
+	}
+
+	return rslt;
+}
 
 /* USER CODE END 0 */
 
@@ -75,6 +329,16 @@ void bmi2_delay_us(uint32_t period, void *intf_ptr);
  */
 int main(void) {
 	/* USER CODE BEGIN 1 */
+	uint8_t rslt;
+
+	uint8_t chip_id;
+	uint8_t bmi270_dev_addr;
+	uint8_t ver_major, ver_minor;
+
+	struct bmi2_dev dev;
+	struct bmi2_feat_sensor_data sensor_data = { .type = BMI2_STEP_COUNTER };
+
+	char oled_buf[16];
 
 	/* USER CODE END 1 */
 
@@ -101,9 +365,9 @@ int main(void) {
 	MX_USART1_UART_Init();
 	MX_I2C1_Init();
 	/* USER CODE BEGIN 2 */
-	struct bmi2_dev dev;
+	printf("Pedometer example\r\n");
 
-	uint8_t bmi270_dev_addr = BMI2_I2C_PRIM_ADDR;
+	bmi270_dev_addr = BMI2_I2C_PRIM_ADDR;
 	dev.intf = BMI2_I2C_INTF;
 	dev.read = (bmi2_read_fptr_t) SensorAPI_I2Cx_Read;
 	dev.write = (bmi2_write_fptr_t) SensorAPI_I2Cx_Write;
@@ -121,8 +385,38 @@ int main(void) {
 	dev.config_file_ptr = NULL;
 
 	/* Initialize bmi270. */
-	uint8_t rslt = bmi270_init(&dev);
+	rslt = bmi270_init(&dev);
+	bmi2_error_codes_print_result(rslt);
 
+	if (rslt != BMI2_OK) {
+		printf("bmi270_wh_init() failed, error code: %d\r\n", rslt);
+	} else {
+		rslt = bmi2_get_regs(BMI2_CHIP_ID_ADDR, &chip_id, 1, &dev);
+		if (rslt != BMI2_OK) {
+			printf("read chip ID failed, error code: %d\r\n", rslt);
+			return rslt;
+		}
+
+		printf("Chip ID: %02x\r\n", chip_id);
+	}
+
+	printf("BMI270 initialized successfully\r\n");
+
+	rslt = bmi2_get_config_file_version(&ver_major, &ver_minor, &dev);
+	printf("The firmware version: v%d.%d\r\n", ver_major, ver_minor);
+
+	rslt = bmi2_step_counter_set_config(&dev);
+	if (rslt != BMI2_OK) {
+		bmi2_error_codes_print_result(rslt);
+		return rslt;
+	}
+	printf("Step counter configured successfully\r\n");
+	ssd1306_Init();
+	ssd1306_Fill(White);
+	ssd1306_SetCursor(4, 18);
+	ssd1306_WriteString("Sai's Steps", Font_11x18, Black);
+	HAL_Delay(3000);
+	ssd1306_UpdateScreen();
 
 	/* USER CODE END 2 */
 
@@ -130,6 +424,33 @@ int main(void) {
 	/* USER CODE BEGIN WHILE */
 	while (1) {
 		/* USER CODE END WHILE */
+		int8_t rslt;
+		uint16_t int_status = 0;
+
+		rslt = bmi2_get_int_status(&int_status, &dev);
+
+		if (rslt == BMI2_OK) {
+
+			if (int_status & BMI270_STEP_CNT_STATUS_MASK) {
+
+				rslt = bmi270_get_feature_data(&sensor_data, 1, &dev);
+				if (rslt == BMI2_OK) {
+					uint32_t steps = sensor_data.sens_data.step_counter_output;
+					printf("Step Count:%ld\r\n", steps);
+					ssd1306_Fill(White);
+					ssd1306_SetCursor(4, 18);
+					snprintf(oled_buf, sizeof(oled_buf), "%ld Steps",
+							steps);
+					ssd1306_WriteString(oled_buf, Font_11x18, Black);
+					ssd1306_UpdateScreen();
+
+				} else {
+					printf("Get feature data failed \r\n");
+				}
+			}
+		} else {
+			printf("Int Status retrieval failed\r\n");
+		}
 
 		/* USER CODE BEGIN 3 */
 	}
@@ -207,14 +528,14 @@ static void MX_DFSDM1_Init(void) {
 	hdfsdm1_channel1.Instance = DFSDM1_Channel1;
 	hdfsdm1_channel1.Init.OutputClock.Activation = ENABLE;
 	hdfsdm1_channel1.Init.OutputClock.Selection =
-			DFSDM_CHANNEL_OUTPUT_CLOCK_SYSTEM;
+	DFSDM_CHANNEL_OUTPUT_CLOCK_SYSTEM;
 	hdfsdm1_channel1.Init.OutputClock.Divider = 2;
 	hdfsdm1_channel1.Init.Input.Multiplexer = DFSDM_CHANNEL_EXTERNAL_INPUTS;
 	hdfsdm1_channel1.Init.Input.DataPacking = DFSDM_CHANNEL_STANDARD_MODE;
 	hdfsdm1_channel1.Init.Input.Pins = DFSDM_CHANNEL_FOLLOWING_CHANNEL_PINS;
 	hdfsdm1_channel1.Init.SerialInterface.Type = DFSDM_CHANNEL_SPI_RISING;
 	hdfsdm1_channel1.Init.SerialInterface.SpiClock =
-			DFSDM_CHANNEL_SPI_CLOCK_INTERNAL;
+	DFSDM_CHANNEL_SPI_CLOCK_INTERNAL;
 	hdfsdm1_channel1.Init.Awd.FilterOrder = DFSDM_CHANNEL_FASTSINC_ORDER;
 	hdfsdm1_channel1.Init.Awd.Oversampling = 1;
 	hdfsdm1_channel1.Init.Offset = 0;
@@ -321,7 +642,7 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOE,
-			M24SR64_Y_RF_DISABLE_Pin | M24SR64_Y_GPO_Pin | ISM43362_RST_Pin,
+	M24SR64_Y_RF_DISABLE_Pin | M24SR64_Y_GPO_Pin | ISM43362_RST_Pin,
 			GPIO_PIN_RESET);
 
 	/*Configure GPIO pin Output Level */
@@ -335,7 +656,7 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOD,
-			USB_OTG_FS_PWR_EN_Pin | PMOD_RESET_Pin | STSAFE_A100_RESET_Pin,
+	USB_OTG_FS_PWR_EN_Pin | PMOD_RESET_Pin | STSAFE_A100_RESET_Pin,
 			GPIO_PIN_RESET);
 
 	/*Configure GPIO pin Output Level */
@@ -575,14 +896,11 @@ int8_t SensorAPI_I2Cx_Write(uint8_t reg_addr, const uint8_t *reg_data,
 	return 0;
 }
 
-void bmi2_delay_us(uint32_t period, void *intf_ptr)
-{
+void bmi2_delay_us(uint32_t period, void *intf_ptr) {
 	uint32_t i;
 
-	while(period--)
-	{
-		for(i = 0; i < 84; i++)
-		{
+	while (period--) {
+		for (i = 0; i < 84; i++) {
 			;
 		}
 	}

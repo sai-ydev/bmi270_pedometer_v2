@@ -18,14 +18,15 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "stdio.h"
-#include "bmi270.h"
-#include "string.h"
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "ssd1306.h"
 #include "ssd1306_tests.h"
 #include <stdbool.h>
+#include "stdio.h"
+#include "bmi270.h"
+#include "string.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -41,7 +42,7 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+uint8_t interrupt_button = 0;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -61,12 +62,12 @@ static void MX_GPIO_Init(void);
 static void MX_DFSDM1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_I2C1_Init(void);
+/* USER CODE BEGIN PFP */
 int8_t SensorAPI_I2Cx_Read(uint8_t reg_addr, uint8_t *reg_data, uint32_t len,
 		void *intf_ptr);
 int8_t SensorAPI_I2Cx_Write(uint8_t reg_addr, const uint8_t *reg_data,
 		uint32_t len, void *intf_ptr);
 void bmi2_delay_us(uint32_t period, void *intf_ptr);
-/* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
@@ -345,7 +346,6 @@ int main(void) {
 	/* MCU Configuration--------------------------------------------------------*/
 
 	/* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-
 	HAL_Init();
 
 	/* USER CODE BEGIN Init */
@@ -423,27 +423,23 @@ int main(void) {
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 	while (1) {
-		/* USER CODE END WHILE */
 		int8_t rslt;
 		uint16_t int_status = 0;
+		/* USER CODE END WHILE */
 
+		/* USER CODE BEGIN 3 */
 		rslt = bmi2_get_int_status(&int_status, &dev);
-
 		if (rslt == BMI2_OK) {
-
 			if (int_status & BMI270_STEP_CNT_STATUS_MASK) {
-
 				rslt = bmi270_get_feature_data(&sensor_data, 1, &dev);
 				if (rslt == BMI2_OK) {
 					uint32_t steps = sensor_data.sens_data.step_counter_output;
 					printf("Step Count:%ld\r\n", steps);
 					ssd1306_Fill(White);
 					ssd1306_SetCursor(4, 18);
-					snprintf(oled_buf, sizeof(oled_buf), "%ld Steps",
-							steps);
+					snprintf(oled_buf, sizeof(oled_buf), "%ld Steps", steps);
 					ssd1306_WriteString(oled_buf, Font_11x18, Black);
 					ssd1306_UpdateScreen();
-
 				} else {
 					printf("Get feature data failed \r\n");
 				}
@@ -451,8 +447,13 @@ int main(void) {
 		} else {
 			printf("Int Status retrieval failed\r\n");
 		}
-
-		/* USER CODE BEGIN 3 */
+		if (interrupt_button) {
+			ssd1306_Fill(Black);
+			ssd1306_SetCursor(4, 18);
+			ssd1306_WriteString("Interrupted!", Font_11x18, White);
+			ssd1306_UpdateScreen();
+			interrupt_button = 0;
+		}
 	}
 	/* USER CODE END 3 */
 }
@@ -528,14 +529,14 @@ static void MX_DFSDM1_Init(void) {
 	hdfsdm1_channel1.Instance = DFSDM1_Channel1;
 	hdfsdm1_channel1.Init.OutputClock.Activation = ENABLE;
 	hdfsdm1_channel1.Init.OutputClock.Selection =
-	DFSDM_CHANNEL_OUTPUT_CLOCK_SYSTEM;
+			DFSDM_CHANNEL_OUTPUT_CLOCK_SYSTEM;
 	hdfsdm1_channel1.Init.OutputClock.Divider = 2;
 	hdfsdm1_channel1.Init.Input.Multiplexer = DFSDM_CHANNEL_EXTERNAL_INPUTS;
 	hdfsdm1_channel1.Init.Input.DataPacking = DFSDM_CHANNEL_STANDARD_MODE;
 	hdfsdm1_channel1.Init.Input.Pins = DFSDM_CHANNEL_FOLLOWING_CHANNEL_PINS;
 	hdfsdm1_channel1.Init.SerialInterface.Type = DFSDM_CHANNEL_SPI_RISING;
 	hdfsdm1_channel1.Init.SerialInterface.SpiClock =
-	DFSDM_CHANNEL_SPI_CLOCK_INTERNAL;
+			DFSDM_CHANNEL_SPI_CLOCK_INTERNAL;
 	hdfsdm1_channel1.Init.Awd.FilterOrder = DFSDM_CHANNEL_FASTSINC_ORDER;
 	hdfsdm1_channel1.Init.Awd.Oversampling = 1;
 	hdfsdm1_channel1.Init.Offset = 0;
@@ -642,7 +643,7 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOE,
-	M24SR64_Y_RF_DISABLE_Pin | M24SR64_Y_GPO_Pin | ISM43362_RST_Pin,
+			M24SR64_Y_RF_DISABLE_Pin | M24SR64_Y_GPO_Pin | ISM43362_RST_Pin,
 			GPIO_PIN_RESET);
 
 	/*Configure GPIO pin Output Level */
@@ -656,7 +657,7 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOD,
-	USB_OTG_FS_PWR_EN_Pin | PMOD_RESET_Pin | STSAFE_A100_RESET_Pin,
+			USB_OTG_FS_PWR_EN_Pin | PMOD_RESET_Pin | STSAFE_A100_RESET_Pin,
 			GPIO_PIN_RESET);
 
 	/*Configure GPIO pin Output Level */
@@ -691,11 +692,12 @@ static void MX_GPIO_Init(void) {
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
-	/*Configure GPIO pin : BUTTON_EXTI13_Pin */
-	GPIO_InitStruct.Pin = BUTTON_EXTI13_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+	/*Configure GPIO pins : Button_Pin VL53L0X_GPIO1_EXTI7_Pin LSM3MDL_DRDY_EXTI8_Pin */
+	GPIO_InitStruct.Pin = Button_Pin | VL53L0X_GPIO1_EXTI7_Pin
+			| LSM3MDL_DRDY_EXTI8_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	HAL_GPIO_Init(BUTTON_EXTI13_GPIO_Port, &GPIO_InitStruct);
+	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
 	/*Configure GPIO pins : ARD_A5_Pin ARD_A4_Pin ARD_A3_Pin ARD_A2_Pin
 	 ARD_A1_Pin ARD_A0_Pin */
@@ -814,12 +816,6 @@ static void MX_GPIO_Init(void) {
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-	/*Configure GPIO pins : VL53L0X_GPIO1_EXTI7_Pin LSM3MDL_DRDY_EXTI8_Pin */
-	GPIO_InitStruct.Pin = VL53L0X_GPIO1_EXTI7_Pin | LSM3MDL_DRDY_EXTI8_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
 	/*Configure GPIO pin : USB_OTG_FS_VBUS_Pin */
 	GPIO_InitStruct.Pin = USB_OTG_FS_VBUS_Pin;
 	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
@@ -904,6 +900,20 @@ void bmi2_delay_us(uint32_t period, void *intf_ptr) {
 			;
 		}
 	}
+}
+
+__weak void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+	/* Prevent unused argument(s) compilation warning */
+	UNUSED(GPIO_Pin);
+
+	if(GPIO_Pin == GPIO_PIN_13){
+		interrupt_button = 1;
+	}
+
+
+	/* NOTE: This function should not be modified, when the callback is needed,
+	 the HAL_GPIO_EXTI_Callback could be implemented in the user file
+	 */
 }
 
 /* USER CODE END 4 */

@@ -2280,7 +2280,7 @@ int8_t bmi2_set_int_pin_config(const struct bmi2_int_pin_config *int_cfg, struct
                 if ((int_pin == BMI2_INT1) || (int_pin == BMI2_INT_BOTH))
                 {
                     /* Configure active low or high */
-                    reg_data = BMI2_SET_BITS(data_array[0], BMI2_INT_LEVEL, int_cfg->pin_cfg[0].lvl);
+					reg_data = BMI2_SET_BITS(data_array[0], BMI2_INT_LEVEL, int_cfg->pin_cfg[0].lvl);
 
                     /* Configure push-pull or open drain */
                     reg_data = BMI2_SET_BITS(reg_data, BMI2_INT_OPEN_DRAIN, int_cfg->pin_cfg[0].od);
